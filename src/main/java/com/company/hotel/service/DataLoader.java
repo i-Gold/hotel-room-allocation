@@ -1,6 +1,6 @@
 package com.company.hotel.service;
 
-import com.company.enumeration.RoomCategory;
+import com.company.hotel.enumeration.RoomCategory;
 import com.company.hotel.model.Room;
 import com.company.hotel.repository.RoomRepository;
 import org.springframework.boot.CommandLineRunner;

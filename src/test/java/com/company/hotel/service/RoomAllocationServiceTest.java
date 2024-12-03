@@ -1,6 +1,6 @@
 package com.company.hotel.service;
 
-import com.company.enumeration.RoomCategory;
+import com.company.hotel.enumeration.RoomCategory;
 import com.company.hotel.dto.OccupancyRequest;
 import com.company.hotel.dto.OccupancyResponse;
 import com.company.hotel.model.Guest;

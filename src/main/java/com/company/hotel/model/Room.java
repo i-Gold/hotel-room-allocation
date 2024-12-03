@@ -1,6 +1,6 @@
 package com.company.hotel.model;
 
-import com.company.enumeration.RoomCategory;
+import com.company.hotel.enumeration.RoomCategory;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
