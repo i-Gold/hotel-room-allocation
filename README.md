@@ -28,38 +28,47 @@ This project is a Room Occupancy Optimization tool designed for hotel clients. I
 
 ### Prerequisites
 - **JDK 23**
-- **Docker** (for running the application in the container)
 - **Maven**
-- **Postgres** (create `hotel` database on the `5432` port number on the environment where you are going to run the application)
 
 ### Build the Application
 
 To build the project, run the following command from the root directory:
 
 **Using Maven:**
+
+This command will compile and package the application into an executable JAR file.
 ```bash
 mvn clean install
 ```
 
-**Docker Run:**
+**Running the Application**
 
-1. Build a Docker image for the application:
+To run the application, execute the following command:
 ```bash
-docker build -t hotel-room-allocation .
+java -jar target/hotel-room-allocation-0.0.1-SNAPSHOT.jar
 ```
 
-2. Run the Docker container:
-```bash
-docker run -p 8080:8080 hotel-room-allocation
-```
 The application will now be accessible at http://localhost:8080.
 
-### Running Tests
+**Running Tests**
 
 To run the unit tests and ensure the application is working as expected, execute the following command:
 
-**Using Maven:**
 ```bash
 mvn test
 ```
 
+## Running the Application with run.sh
+
+If you prefer to use the run.sh script to automate the build and run process, follow these steps:
+
+1. Make sure run.sh has executable permissions:
+    ```bash
+    chmod +x run.sh
+    ```
+2. Execute the script:
+    ```bash
+    ./run.sh
+    ```
+
+This will clean and build the project, then start the application.
