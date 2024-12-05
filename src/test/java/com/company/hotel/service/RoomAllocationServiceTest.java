@@ -1,141 +1,99 @@
 package com.company.hotel.service;
 
-import com.company.hotel.enumeration.RoomCategory;
-import com.company.hotel.dto.OccupancyRequest;
-import com.company.hotel.dto.OccupancyResponse;
-import com.company.hotel.model.Guest;
-import com.company.hotel.model.Room;
-import com.company.hotel.repository.GuestRepository;
-import com.company.hotel.repository.RoomRepository;
-import org.junit.jupiter.api.BeforeEach;
+import com.company.hotel.dto.AllocationRequest;
+import jakarta.validation.ValidationException;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.anyList;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RoomAllocationServiceTest {
 
-    @Mock
-    private GuestRepository guestRepository;
+    private final RoomAllocationService service = new RoomAllocationService();
 
-    @Mock
-    private RoomRepository roomRepository;
+    @Test
+    void shouldAllocateRoomsSuccessfully() {
+        var request = new AllocationRequest(
+                7,
+                5,
+                List.of(23.0, 45.0, 155.0, 374.0, 22.0, 99.99, 100.0, 101.0, 115.0, 209.0)
+        );
 
-    @InjectMocks
-    private RoomAllocationService roomAllocationService;
+        var response = service.allocateRooms(request);
 
-    private OccupancyRequest occupancyRequest;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-
-        occupancyRequest = new OccupancyRequest();
-        occupancyRequest.setPremiumRooms(3);
-        occupancyRequest.setEconomyRooms(2);
-        occupancyRequest.setPotentialGuests(Arrays.asList(23.0, 45.0, 155.0, 374.0, 22.0, 99.99, 100.0, 101.0, 115.0, 209.0));
+        assertEquals(6, response.usagePremium());
+        assertEquals(1054.0, response.revenuePremium()); // 374 + 209 + 155 + 115 + 101 + 100
+        assertEquals(4, response.usageEconomy());
+        assertEquals(189.99, response.revenueEconomy()); // 22 + 23 + 45 + 99.99
     }
 
     @Test
-    void testAllocateRoomsSuccessfully() {
-        List<Room> premiumRooms = Arrays.asList(new Room(RoomCategory.PREMIUM, false), new Room(RoomCategory.PREMIUM, false), new Room(RoomCategory.PREMIUM, false));
-        List<Room> economyRooms = Arrays.asList(new Room(RoomCategory.ECONOMY, false), new Room(RoomCategory.ECONOMY, false));
+    void shouldUpgradeEconomyToPremiumIfSpaceAvailable() {
+        var request = new AllocationRequest(
+                3,
+                3,
+                List.of(150.0, 80.0, 60.0, 30.0, 40.0, 90.0)
+        );
 
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.PREMIUM, Boolean.FALSE, 3)).thenReturn(premiumRooms);
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.ECONOMY, Boolean.FALSE, 2)).thenReturn(economyRooms);
+        var response = service.allocateRooms(request);
 
-        when(guestRepository.saveAll(anyList())).thenReturn(Arrays.asList(new Guest(155.0), new Guest(374.0), new Guest(99.99), new Guest(100.0)));
-
-        OccupancyResponse response = roomAllocationService.allocateRooms(occupancyRequest);
-
-        assertEquals(3, response.getUsagePremium());
-        assertEquals(2, response.getUsageEconomy());
-        assertEquals(738.0, response.getRevenuePremium());
-        assertEquals(144.99, response.getRevenueEconomy());
-
-        verify(guestRepository, times(2)).saveAll(anyList());
-        verify(roomRepository, times(2)).saveAll(anyList());
+        assertEquals(3, response.usagePremium());
+        assertEquals(320.0, response.revenuePremium());  // 150 + 90 + 80 (including upgraded the highest paying guests willing to pay < 100)
+        assertEquals(3, response.usageEconomy());
+        assertEquals(130.0, response.revenueEconomy());  // others with low willingness to pay (30 + 40 + 60)
     }
 
     @Test
-    void testNotEnoughPremiumRooms() {
-        List<Room> premiumRooms = Arrays.asList(new Room(RoomCategory.PREMIUM, false), new Room(RoomCategory.PREMIUM, false));
-        List<Room> economyRooms = Arrays.asList(new Room(RoomCategory.ECONOMY, false), new Room(RoomCategory.ECONOMY, false));
+    void shouldThrowExceptionWhenNotEnoughRooms() {
+        var request = new AllocationRequest(
+                3,
+                3,
+                List.of(150.0, 80.0, 60.0, 30.0, 40.0, 90.0, 200.0)  // 7 potential guests but only 6 rooms
+        );
 
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.PREMIUM, Boolean.FALSE, 3)).thenReturn(premiumRooms);
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.ECONOMY, Boolean.FALSE, 2)).thenReturn(economyRooms);
-
-        when(guestRepository.saveAll(anyList())).thenReturn(Arrays.asList(new Guest(155.0), new Guest(374.0), new Guest(99.99), new Guest(100.0)));
-
-        OccupancyResponse response = roomAllocationService.allocateRooms(occupancyRequest);
-
-        assertEquals(2, response.getUsagePremium());
-        assertEquals(2, response.getUsageEconomy());
-        assertEquals(583.0, response.getRevenuePremium());
-        assertEquals(144.99, response.getRevenueEconomy());
+        assertThrows(ValidationException.class, () -> service.allocateRooms(request),
+                "Not enough rooms for the potential guests");
     }
 
     @Test
-    void testNoAvailableRooms() {
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.PREMIUM, Boolean.FALSE, 3)).thenReturn(List.of());
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.ECONOMY, Boolean.FALSE, 2)).thenReturn(List.of());
+    void shouldThrowExceptionWhenRoomsAreNegative() {
+        var request = new AllocationRequest(
+                -1,  // negative premium rooms
+                3,
+                List.of(100.0, 50.0)
+        );
 
-        OccupancyResponse response = roomAllocationService.allocateRooms(occupancyRequest);
-
-        assertEquals(0, response.getUsagePremium());
-        assertEquals(0, response.getUsageEconomy());
-        assertEquals(0, response.getRevenuePremium());
-        assertEquals(0, response.getRevenueEconomy());
+        assertThrows(IllegalArgumentException.class, () -> service.allocateRooms(request),
+                "Number of rooms can't be negative");
     }
 
     @Test
-    void testAllGuestsArePremium() {
-        occupancyRequest.setPotentialGuests(Arrays.asList(200.0, 250.0, 300.0));
+    void shouldThrowExceptionWhenGuestsListIsEmpty() {
+        var request = new AllocationRequest(
+                3,
+                3,
+                List.of()  // no guests
+        );
 
-        List<Room> premiumRooms = Arrays.asList(new Room(RoomCategory.PREMIUM, false), new Room(RoomCategory.PREMIUM, false), new Room(RoomCategory.PREMIUM, false));
-        List<Room> economyRooms = Arrays.asList(new Room(RoomCategory.ECONOMY, false), new Room(RoomCategory.ECONOMY, false));
-
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.PREMIUM, Boolean.FALSE, 3)).thenReturn(premiumRooms);
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.ECONOMY, Boolean.FALSE, 2)).thenReturn(economyRooms);
-
-        when(guestRepository.saveAll(anyList())).thenReturn(Arrays.asList(new Guest(250.0), new Guest(300.0), new Guest(200.0)));
-
-        OccupancyResponse response = roomAllocationService.allocateRooms(occupancyRequest);
-
-        assertEquals(3, response.getUsagePremium());
-        assertEquals(0, response.getUsageEconomy());
-        assertEquals(750.0, response.getRevenuePremium());
-        assertEquals(0, response.getRevenueEconomy());
+        assertThrows(ValidationException.class, () -> service.allocateRooms(request),
+                "Guests list can't be empty");
     }
 
     @Test
-    void testAllGuestsUnder100() {
-        occupancyRequest.setPremiumRooms(2);
-        occupancyRequest.setEconomyRooms(3);
-        occupancyRequest.setPotentialGuests(Arrays.asList(23.0, 45.0, 30.0, 60.0, 99.0));
+    void shouldUpgradeToPremiumIfEconomyIsOccupied() {
+        var request = new AllocationRequest(
+                3,
+                3,
+                List.of(80.0, 90.0, 50.0, 40.0, 30.0)  // All guests willing to pay less than 100
+        );
 
-        List<Room> premiumRooms = Arrays.asList(new Room(RoomCategory.PREMIUM, false), new Room(RoomCategory.PREMIUM, false));
-        List<Room> economyRooms = Arrays.asList(new Room(RoomCategory.ECONOMY, false), new Room(RoomCategory.ECONOMY, false), new Room(RoomCategory.ECONOMY, false));
+        var response = service.allocateRooms(request);
 
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.PREMIUM, Boolean.FALSE, 2)).thenReturn(premiumRooms);
-        when(roomRepository.findAvailableRoomsByCategoryAndIsOccupied(RoomCategory.ECONOMY, Boolean.FALSE, 3)).thenReturn(economyRooms);
-
-        when(guestRepository.saveAll(anyList())).thenReturn(Arrays.asList(new Guest(23.0), new Guest(45.0), new Guest(30.0), new Guest(60.0), new Guest(99.0)));
-
-        OccupancyResponse response = roomAllocationService.allocateRooms(occupancyRequest);
-
-        assertEquals(0, response.getUsagePremium());
-        assertEquals(3, response.getUsageEconomy());
-        assertEquals(0, response.getRevenuePremium());
-        assertEquals(204.0, response.getRevenueEconomy());
+        assertEquals(2, response.usagePremium());  // upgraded guests with the highest willing to pay
+        assertEquals(170.0, response.revenuePremium());
+        assertEquals(3, response.usageEconomy());  // All guests in economy
+        assertEquals(120.0, response.revenueEconomy());  // 30 + 40 + 50
     }
 }
