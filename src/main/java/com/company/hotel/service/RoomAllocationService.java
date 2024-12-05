@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -17,9 +18,9 @@ public class RoomAllocationService {
     public AllocationResponse allocateRooms(AllocationRequest request) {
         validateRequest(request);
 
-        List<Double> potentialGuests = request.potentialGuests();
-        int premiumRooms = request.premiumRooms();
-        int economyRooms = request.economyRooms();
+        var potentialGuests = request.potentialGuests();
+        var premiumRooms = request.premiumRooms();
+        var economyRooms = request.economyRooms();
 
         if (potentialGuests.size() > (premiumRooms + economyRooms)) {
             logger.error("Invalid room count: premiumRooms={} economyRooms={}", request.premiumRooms(), request.economyRooms());
@@ -28,49 +29,61 @@ public class RoomAllocationService {
 
         // Sort guests by their willingness to pay (descending order) for allocation by the highest cost firstly
         var guests = potentialGuests.stream()
-                .sorted((a, b) -> Double.compare(b, a))
+                .sorted(Comparator.reverseOrder())
                 .toList();
 
-        // Separate premium guests (willing to pay 100 or more)
-        var premiumGuests = guests.stream()
-                .filter(willingToPay -> willingToPay >= 100)
-                .toList();
-
-        // Fill Premium rooms with guests willing to pay >= 100
-        var filledPremium = premiumGuests.stream()
-                .limit(premiumRooms)  // Limit by available premium rooms
-                .toList();
-
-        int usagePremium = filledPremium.size();
-        double revenuePremium = filledPremium.stream().mapToDouble(Double::doubleValue).sum();
+        // Allocate Premium guests (willing to pay 100 or more)
+        var premiumResult = allocate(
+                guests.stream().filter(amount -> amount >= 100).toList(),
+                premiumRooms
+        );
 
         // Separate economy guests (willing to pay less than 100)
         var economyGuests = guests.stream()
-                .filter(willingToPay -> willingToPay < 100)
-                .sorted()  // sorting by ascending order, to handle upgrade option correctly if premium rooms are left
+                .filter(amount -> amount < 100)
+                .sorted() // sorting by ascending order, to handle upgrade option correctly if premium rooms are left
                 .toList();
 
-        // Fill Economy rooms
-        var filledEconomy = economyGuests.stream()
-                .limit(economyRooms)  // Limit by available economy rooms
-                .toList();
+        // Allocate Economy guests
+        var economyResult = allocate(
+                economyGuests,
+                economyRooms
+        );
 
-        int usageEconomy = filledEconomy.size();
-        double revenueEconomy = filledEconomy.stream().mapToDouble(Double::doubleValue).sum();
-
-        // If Premium rooms are still available, upgrade Economy guests with the highest payment to Premium
+        // Upgrade remaining Economy guests to Premium (if Premium rooms are available)
         var remainingEconomyGuests = economyGuests.stream()
-                .skip(filledEconomy.size())  // Skip those already placed in Economy rooms
+                .filter(amount -> amount < 100)
+                .skip(economyResult.usage())
                 .toList();
 
-        var upgradedEconomyToPremium = remainingEconomyGuests.stream()
-                .limit(premiumRooms - usagePremium)  // Upgrade to Premium rooms if there's space
+        // Allocate remaining Economy guests to Premium, highest paying guests first
+        var upgradeResult = allocate(
+                remainingEconomyGuests,
+                premiumRooms - premiumResult.usage()
+        );
+
+        return new AllocationResponse(
+                premiumResult.usage() + upgradeResult.usage(),
+                premiumResult.revenue() + upgradeResult.revenue(),
+                economyResult.usage(),
+                economyResult.revenue()
+        );
+    }
+
+    private AllocationResult allocate(List<Double> guests, int availableRooms) {
+        if (guests.isEmpty() || availableRooms <= 0) {
+            return new AllocationResult(0, 0.0);
+        }
+
+        var allocatedGuests = guests.stream()
+                .limit(availableRooms)
                 .toList();
 
-        usagePremium += upgradedEconomyToPremium.size();
-        revenuePremium += upgradedEconomyToPremium.stream().mapToDouble(Double::doubleValue).sum();
+        var revenue = allocatedGuests.stream()
+                .mapToDouble(Double::doubleValue)
+                .sum();
 
-        return new AllocationResponse(usagePremium, revenuePremium, usageEconomy, revenueEconomy);
+        return new AllocationResult(allocatedGuests.size(), revenue);
     }
 
     private void validateRequest(AllocationRequest request) {
@@ -84,5 +97,9 @@ public class RoomAllocationService {
             logger.error("Guests list is empty");
             throw new ValidationException("Guests list can't be empty");
         }
+    }
+
+    // Use record to store allocation results
+    private record AllocationResult(int usage, double revenue) {
     }
 }
